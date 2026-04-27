@@ -1,0 +1,12 @@
+# Ignorar arquivos Python compilados
+.venv/
+__pycache__/
+.env
+*.log
+
+# Ignorar arquivos de ambiente
+.env
+.env.*
+
+# pasta .streamlit
+secrets.toml
