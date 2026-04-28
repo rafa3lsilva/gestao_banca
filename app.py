@@ -3,6 +3,8 @@ import pandas as pd
 from supabase import create_client
 import plotly.express as px
 import plotly.graph_objects as go
+import calendar
+import datetime
 
 # Configurações de Página
 st.set_page_config(page_title="Data Insight - Gestão", layout="wide")
@@ -350,8 +352,8 @@ with tab_relatorios:
                 unsafe_allow_html=True)
 
     if not df_hist.empty:
-        sub_tab_geral, sub_tab_ligas = st.tabs(
-            ["🎯 Visão Geral & Métodos", "🏆 Ranking de Ligas"])
+        sub_tab_geral, sub_tab_calendario, sub_tab_ligas = st.tabs(
+            ["🎯 Visão Geral", "🗓️ Calendário", "🏆 Ligas"])
 
         with sub_tab_geral:
             # --- GRÁFICO DA EQUITY CURVE ---
@@ -372,7 +374,118 @@ with tab_relatorios:
             )
             st.plotly_chart(fig_line, use_container_width=True)
 
-            st.divider()
+            st.divider()             
+
+            with sub_tab_calendario:
+                st.markdown("#### 🗓️ Calendário de Desempenho")
+
+                # 1. Extração robusta da data (Prioriza a coluna 'data' do CSV, fallback para o registro do banco)
+                if 'data' in df_hist.columns:
+                    df_hist['data_limpa'] = pd.to_datetime(
+                        df_hist['data'], errors='coerce', dayfirst=True).dt.date
+                    # Se alguma linha não tiver data, preenche com a data exata em que foi salva no banco
+                    df_hist['data_limpa'] = df_hist['data_limpa'].fillna(
+                        pd.to_datetime(df_hist['created_at']).dt.date)
+                else:
+                    df_hist['data_limpa'] = pd.to_datetime(
+                        df_hist['created_at']).dt.date
+
+                # 2. Filtros de Mês e Ano (Dinâmico)
+                hoje = datetime.date.today()
+                col_m, col_a = st.columns([2, 1])
+
+                meses = {1: 'Janeiro', 2: 'Fevereiro', 3: 'Março', 4: 'Abril', 5: 'Maio', 6: 'Junho',
+                        7: 'Julho', 8: 'Agosto', 9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro'}
+                mes_selecionado = col_m.selectbox("Mês", options=list(
+                    meses.keys()), format_func=lambda x: meses[x], index=hoje.month - 1)
+
+                # Descobre automaticamente os anos que existem no seu histórico
+                if not df_hist.empty:
+                    anos_disponiveis = sorted(pd.to_datetime(
+                        df_hist['data_limpa']).dt.year.unique().tolist())
+                else:
+                    anos_disponiveis = [hoje.year]
+
+                # Garante que o ano atual sempre esteja na lista
+                if hoje.year not in anos_disponiveis:
+                    anos_disponiveis.append(hoje.year)
+                    anos_disponiveis.sort()
+
+                # Define o ano mais recente/atual como o padrão ao carregar a página
+                index_ano = anos_disponiveis.index(hoje.year)
+                ano_selecionado = col_a.selectbox(
+                    "Ano", options=anos_disponiveis, index=index_ano)
+
+                # 3. Filtra os dados do RedScore APENAS para o mês/ano escolhido
+                df_mes = df_hist[
+                    (pd.to_datetime(df_hist['data_limpa']).dt.month == mes_selecionado) &
+                    (pd.to_datetime(df_hist['data_limpa']
+                                    ).dt.year == ano_selecionado)
+                ].copy()
+
+                # 4. Agrupa a matemática por DIA
+                if not df_mes.empty:
+                    df_mes['dia'] = pd.to_datetime(df_mes['data_limpa']).dt.day
+                    # Transforma o groupby num dicionário para facilitar a busca (ex: {dia 15: R$ 250.00})
+                    lucro_por_dia = df_mes.groupby(
+                        'dia')[col_lucro].sum().to_dict()
+                    entradas_por_dia = df_mes.groupby(
+                        'dia')['status'].count().to_dict()
+                else:
+                    lucro_por_dia = {}
+                    entradas_por_dia = {}
+
+                # 5. A Mágica do HTML/CSS (Gera o Grid do Calendário)
+                calendar.setfirstweekday(calendar.SUNDAY)
+
+                cal = calendar.monthcalendar(ano_selecionado, mes_selecionado)
+
+                html_cal = """
+                <style>
+                    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 15px; }
+                    .cal-header { text-align: center; font-weight: bold; color: #A0A0A0; padding-bottom: 5px; font-size: 14px;}
+                    .cal-cell { 
+                        background-color: #1E1E24; border-radius: 8px; padding: 8px; min-height: 85px; 
+                        display: flex; flex-direction: column; justify-content: space-between; 
+                        box-shadow: 0 4px 6px rgba(0,0,0,0.3); border-top: 1px solid #2A2A35;
+                    }
+                    .cal-day { font-size: 14px; font-weight: bold; color: #666; }
+                    .cal-profit { font-size: 15px; font-weight: 900; text-align: right; }
+                    .cal-bets { font-size: 11px; text-align: right; color: #888; margin-top: 2px;}
+                    .green-day { border-bottom: 3px solid #00E676; background: linear-gradient(180deg, rgba(30,30,36,1) 60%, rgba(0,230,118,0.05) 100%); }
+                    .red-day { border-bottom: 3px solid #FF3D00; background: linear-gradient(180deg, rgba(30,30,36,1) 60%, rgba(255,61,0,0.05) 100%); }
+                    .neutral-day { border-bottom: 3px solid #333; }
+                </style>
+                <div class="cal-grid">
+                    <div class="cal-header">Dom</div><div class="cal-header">Seg</div><div class="cal-header">Ter</div><div class="cal-header">Qua</div><div class="cal-header">Qui</div><div class="cal-header">Sex</div><div class="cal-header">Sáb</div>
+                """
+
+                # Laço de repetição: Para cada semana, e para cada dia da semana...
+                for semana in cal:
+                    for dia in semana:
+                        if dia == 0:
+                            # Dias fora do mês atual ficam invisíveis
+                            html_cal += '<div></div>'
+                        else:
+                            lucro = lucro_por_dia.get(dia, 0)
+                            apostas = entradas_por_dia.get(dia, 0)
+
+                            if apostas == 0:
+                                classe = "neutral-day"
+                                txt_lucro = "-"
+                                txt_apostas = ""
+                                cor_lucro = "#666"
+                            else:
+                                classe = "green-day" if lucro >= 0 else "red-day"
+                                txt_lucro = f"+ R$ {lucro:.2f}" if lucro >= 0 else f"- R$ {abs(lucro):.2f}"
+                                txt_apostas = f"{apostas} entradas"
+                                cor_lucro = "#00E676" if lucro >= 0 else "#FF3D00"
+
+                            # TUDO EM UMA LINHA SÓ: Isso impede o Streamlit de quebrar o Grid!
+                            html_cal += f'<div class="cal-cell {classe}"><div class="cal-day">{dia}</div><div><div class="cal-profit" style="color: {cor_lucro};">{txt_lucro}</div><div class="cal-bets">{txt_apostas}</div></div></div>'
+
+                html_cal += "</div>"  # Fecha o Grid
+                st.markdown(html_cal, unsafe_allow_html=True)
 
             # --- GRÁFICO DE LUCRO POR MÉTODO ---
             st.markdown("#### 🎯 Lucro por Método")
