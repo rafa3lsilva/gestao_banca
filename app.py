@@ -261,11 +261,18 @@ with tab_operacoes:
 
     if res.data:
         df_ops = pd.DataFrame(res.data)
-        df_ops['stake_fixa_aplicada'] = 1000.0 * (perc_fixa / 100)
-        df_ops['stake_kelly_estatica_aplicada'] = (
-            df_ops['stake_kelly_porcentagem'] / 100) * 1000.0
-        df_ops['stake_kelly_dinamica_aplicada'] = (
-            df_ops['stake_kelly_porcentagem'] / 100) * saldo_disponivel
+
+        # Cria uma máscara para aplicar o recálculo APENAS aos jogos Pendentes
+        mask_pendente = df_ops['status'] == 'Pendente'
+
+        # Atualiza as stakes na tela apenas onde a máscara for Verdadeira
+        if mask_pendente.any():
+            df_ops.loc[mask_pendente,
+                       'stake_fixa_aplicada'] = 1000.0 * (perc_fixa / 100)
+            df_ops.loc[mask_pendente, 'stake_kelly_estatica_aplicada'] = (
+                df_ops.loc[mask_pendente, 'stake_kelly_porcentagem'] / 100) * 1000.0
+            df_ops.loc[mask_pendente, 'stake_kelly_dinamica_aplicada'] = (
+                df_ops.loc[mask_pendente, 'stake_kelly_porcentagem'] / 100) * saldo_disponivel
 
         with col_botao:
             st.write("")
@@ -503,7 +510,7 @@ with tab_historico:
 
             # PASSO B: Baixa o histórico DE NOVO, agora com a sua correção aplicada
             res_atualizado = supabase.table("historico_bets").select(
-                "*").order("created_at", ascending=True).execute()
+                "*").order("created_at", desc=False).execute()
             df_calc = pd.DataFrame(res_atualizado.data)
 
             # PASSO C: Recalcula tudo desde o dia 1
