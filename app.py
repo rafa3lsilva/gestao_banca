@@ -119,6 +119,14 @@ with st.sidebar:
         colunas_csv = df_new.columns.tolist()
 
         if st.sidebar.button("🚀 Confirmar Carga", use_container_width=True):
+            if not df_new.empty and 'Data' in df_new.columns:
+                data_csv = df_new['Data'].iloc[0]
+                try:
+                    # Limpa todos os jogos pendentes daquela mesma data para evitar duplicidade ou jogos fantasmas
+                    supabase.table("historico_bets").delete().eq("data", data_csv).eq("status", "Pendente").execute()
+                except Exception as e:
+                    pass
+
             rows = []
             for _, r in df_new.iterrows():
                 col_metodo = "Tipo de Aposta" if "Tipo de Aposta" in colunas_csv else "tipo de aposta"
@@ -297,7 +305,7 @@ with tab_operacoes:
                 "stake_fixa_aplicada": st.column_config.NumberColumn("Fixa (R$)", format="R$ %.2f"),
                 "stake_kelly_estatica_aplicada": st.column_config.NumberColumn("Kelly Est. (R$)", format="R$ %.2f"),
                 "stake_kelly_dinamica_aplicada": st.column_config.NumberColumn("Kelly Din. (R$)", format="R$ %.2f"),
-                "status": st.column_config.SelectboxColumn("Ação", options=["Pendente", "Apostado", "Green", "Red", "Void"]),
+                "status": st.column_config.SelectboxColumn("Ação", options=["Pendente", "Excluir", "Apostado", "Green", "Red", "Void"]),
             },
             disabled=["stake_fixa_aplicada", "stake_kelly_estatica_aplicada",
                       "stake_kelly_dinamica_aplicada", "odd_justa_ia", "ev+"],
@@ -310,6 +318,12 @@ with tab_operacoes:
 
             for i, row in edited_df.iterrows():
                 status_atual = row['status']
+                
+                # Se marcou Excluir no selectbox, deleta do banco e ignora os próximos cálculos para esse jogo
+                if status_atual == 'Excluir':
+                    supabase.table("historico_bets").delete().eq("id", row['id']).execute()
+                    continue
+
                 lucro_dinamica_calc = 0
 
                 if status_atual in ['Green', 'Red', 'Void']:
@@ -334,6 +348,11 @@ with tab_operacoes:
                 row_dict = row.to_dict()
                 row_dict['status'] = status_atual
                 row_dict['lucro_real'] = lucro_dinamica_calc
+                
+                # Remove colunas calculadas no frontend para não quebrar o banco
+                row_dict.pop('odd_justa_ia', None)
+                row_dict.pop('ev+', None)
+                
                 jogos_para_atualizar.append(row_dict)
 
             if jogos_para_atualizar:
@@ -611,7 +630,7 @@ with tab_historico:
                     "data": "Data", "horario": "Horário", "liga": "Liga", "time_casa": "Casa", "time_visitante": "Visitante",
                     "tipo_aposta": "Método",
                     "odd_mercado": st.column_config.NumberColumn("Odd", format="%.2f"),
-                    "status": st.column_config.SelectboxColumn("Ação", options=["Pendente", "Apostado", "Green", "Red", "Void"]),
+                    "status": st.column_config.SelectboxColumn("Ação", options=["Pendente", "Excluir", "Apostado", "Green", "Red", "Void"]),
                     "lucro_real": st.column_config.NumberColumn("Lucro da Dinâmica", disabled=True, format="R$ %.2f"),
                 },
                 disabled=["lucro_real", "id", "created_at"],
@@ -622,10 +641,17 @@ with tab_historico:
 
         # 4. O Motor de Reprocessamento Temporal (À Prova de Falhas)
         if btn_recalcular:
-            # PASSO A: Salva no banco as edições que você fez APENAS nos jogos filtrados
+            # PASSO A: Processa exclusões primeiro, e salva as edições normais no banco
             if not df_visivel.empty:
-                supabase.table("historico_bets").upsert(
-                    edited_hist.to_dict(orient='records')).execute()
+                jogos_manter = []
+                for _, r in edited_hist.iterrows():
+                    if r['status'] == 'Excluir':
+                        supabase.table("historico_bets").delete().eq("id", r['id']).execute()
+                    else:
+                        jogos_manter.append(r.to_dict())
+                
+                if jogos_manter:
+                    supabase.table("historico_bets").upsert(jogos_manter).execute()
 
             # PASSO B: Baixa o histórico DE NOVO, agora com a sua correção aplicada
             res_atualizado = supabase.table("historico_bets").select(
