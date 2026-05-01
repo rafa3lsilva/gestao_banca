@@ -281,20 +281,26 @@ with tab_operacoes:
             salvar_clicado = st.button(
                 "💾 Salvar Alterações", type="primary", use_container_width=True)
 
+        # Calcula a odd justa baseada na probabilidade da IA salva no banco
+        df_ops['odd_justa_ia'] = 100 / df_ops['prob_ia']
+        df_ops['ev+'] = ((df_ops['odd_mercado'] / df_ops['odd_justa_ia'])-1) *100
+
         edited_df = st.data_editor(
             df_ops,
-            column_order=("horario", "liga", "time_casa", "time_visitante", "tipo_aposta", "odd_mercado",
+            column_order=("horario", "liga", "time_casa", "time_visitante", "tipo_aposta", "odd_justa_ia", "odd_mercado", "ev+",
                           "stake_fixa_aplicada", "stake_kelly_estatica_aplicada", "stake_kelly_dinamica_aplicada", "status"),
             column_config={
                 "horario": "Horário", "liga": "Liga", "time_casa": "Casa", "time_visitante": "Visitante", "tipo_aposta": "Método",
+                "odd_justa_ia": st.column_config.NumberColumn("Odd Justa", format="%.2f"),
                 "odd_mercado": st.column_config.NumberColumn("Odd", format="%.2f"),
+                "ev+": st.column_config.NumberColumn("EV+ %", format="%.2f %%"),
                 "stake_fixa_aplicada": st.column_config.NumberColumn("Fixa (R$)", format="R$ %.2f"),
                 "stake_kelly_estatica_aplicada": st.column_config.NumberColumn("Kelly Est. (R$)", format="R$ %.2f"),
                 "stake_kelly_dinamica_aplicada": st.column_config.NumberColumn("Kelly Din. (R$)", format="R$ %.2f"),
                 "status": st.column_config.SelectboxColumn("Ação", options=["Pendente", "Apostado", "Green", "Red", "Void"]),
             },
             disabled=["stake_fixa_aplicada", "stake_kelly_estatica_aplicada",
-                      "stake_kelly_dinamica_aplicada"],
+                      "stake_kelly_dinamica_aplicada", "odd_justa_ia", "ev+"],
             hide_index=True, use_container_width=True
         )
 
