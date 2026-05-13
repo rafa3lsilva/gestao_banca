@@ -293,22 +293,38 @@ with tab_operacoes:
         df_ops['odd_justa_ia'] = 100 / df_ops['prob_ia']
         df_ops['ev+'] = ((df_ops['odd_mercado'] / df_ops['odd_justa_ia'])-1) *100
 
+        # Calcula a odd justa e o EV+
+        df_ops['odd_justa_ia'] = 100 / df_ops['prob_ia']
+        df_ops['ev+'] = ((df_ops['odd_mercado'] /
+                         df_ops['odd_justa_ia']) - 1) * 100
+
+        # --- NOVO: TAG VISUAL DE MONITORAMENTO ---
+        def tag_estrategia(row):
+            if row['tipo_aposta'] == 'Home' and 1.30 <= row['odd_mercado'] <= 1.50:
+                return "⭐ Foco: Home 1.30-1.50"
+            elif row['tipo_aposta'] == 'Home' and row['odd_mercado'] >= 2.00:
+                return "🔥 Ouro: Home 2.0+"
+            return ""
+
+        df_ops['alerta'] = df_ops.apply(tag_estrategia, axis=1)
+
+        # Atualizando o data_editor para mostrar a nova coluna
         edited_df = st.data_editor(
             df_ops,
-            column_order=("horario", "liga", "time_casa", "time_visitante", "tipo_aposta", "odd_justa_ia", "odd_mercado", "ev+",
-                          "stake_fixa_aplicada", "stake_kelly_estatica_aplicada", "stake_kelly_dinamica_aplicada", "status"),
+            column_order=("horario", "liga", "time_casa", "time_visitante", "tipo_aposta", "odd_mercado", "ev+", "alerta",
+                          # Simplifiquei a visualização para focar na Fixa, ajuste como preferir
+                          "stake_fixa_aplicada", "status"),
             column_config={
                 "horario": "Horário", "liga": "Liga", "time_casa": "Casa", "time_visitante": "Visitante", "tipo_aposta": "Método",
-                "odd_justa_ia": st.column_config.NumberColumn("Odd Justa", format="%.2f"),
                 "odd_mercado": st.column_config.NumberColumn("Odd", format="%.2f"),
-                "ev+": st.column_config.NumberColumn("EV+ %", format="%.2f %%"),
+                "ev+": st.column_config.NumberColumn("EV+", format="%.2f %%"),
+                "alerta": "Radar",  # Nome da nova coluna na tela
                 "stake_fixa_aplicada": st.column_config.NumberColumn("Fixa (R$)", format="R$ %.2f"),
-                "stake_kelly_estatica_aplicada": st.column_config.NumberColumn("Kelly Est. (R$)", format="R$ %.2f"),
-                "stake_kelly_dinamica_aplicada": st.column_config.NumberColumn("Kelly Din. (R$)", format="R$ %.2f"),
-                "status": st.column_config.SelectboxColumn("Ação", options=["Pendente", "Excluir", "Apostado", "Green", "Red", "Void"]),
+                "status": st.column_config.SelectboxColumn("Ação", options=["Pendente", "Apostado", "Green", "Red", "Void"]),
             },
+            # Bloqueando a nova coluna de ser editada manualmente
             disabled=["stake_fixa_aplicada", "stake_kelly_estatica_aplicada",
-                      "stake_kelly_dinamica_aplicada", "odd_justa_ia", "ev+"],
+                      "stake_kelly_dinamica_aplicada", "odd_justa_ia", "ev+", "alerta"],
             hide_index=True, use_container_width=True
         )
 
