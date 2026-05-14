@@ -368,7 +368,8 @@ with tab_operacoes:
                 # Remove colunas calculadas no frontend para não quebrar o banco
                 row_dict.pop('odd_justa_ia', None)
                 row_dict.pop('ev+', None)
-                
+                row_dict.pop('alerta', None)
+
                 jogos_para_atualizar.append(row_dict)
 
             if jogos_para_atualizar:
